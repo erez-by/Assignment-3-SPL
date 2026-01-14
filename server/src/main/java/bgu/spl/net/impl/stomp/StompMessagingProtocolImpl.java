@@ -27,7 +27,7 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
 	
 	
     public boolean shouldTerminate(){
-
+        return true;
     }
 
     private void handleConnect(String[] lines){

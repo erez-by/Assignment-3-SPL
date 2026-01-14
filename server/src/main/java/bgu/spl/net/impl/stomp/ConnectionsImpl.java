@@ -45,7 +45,7 @@ public class ConnectionsImpl<T> implements Connections <T> {
             for(String topic : Topics.keySet()){
                 ConcurrentHashMap<Integer,Integer> topics = TopicToClient.get(topic);
                 if (topics != null){
-                    topics.remove(connectionId)
+                    topics.remove(connectionId);
                 }
 
             }
@@ -56,7 +56,13 @@ public class ConnectionsImpl<T> implements Connections <T> {
 
     }
 
-    public void connect(int connectionId, ConnectionHandler handler){
+    public void disconnectAll(){
+        for(Integer id : ClientHandler.keySet()){
+            disconnect(id);
+        }
+    }
+
+    public void connect(int connectionId, ConnectionHandler<T> handler){
         if(handler != null){
             ClientHandler.put(connectionId , handler);
         }

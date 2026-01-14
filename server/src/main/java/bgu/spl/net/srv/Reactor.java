@@ -2,6 +2,9 @@ package bgu.spl.net.srv;
 
 import bgu.spl.net.api.MessageEncoderDecoder;
 import bgu.spl.net.api.MessagingProtocol;
+import bgu.spl.net.impl.stomp.ConnectionsImpl;
+import bgu.spl.net.impl.stomp.StompMessagingProtocolImpl;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.ClosedSelectorException;
@@ -22,6 +25,10 @@ public class Reactor<T> implements Server<T> {
 
     private Thread selectorThread;
     private final ConcurrentLinkedQueue<Runnable> selectorTasks = new ConcurrentLinkedQueue<>();
+
+    //adding filed to asign connection id and connections
+    private int connectionId = 0;
+    protected final ConnectionsImpl<T> connections = new ConnectionsImpl<>();
 
     public Reactor(
             int numThreads,
@@ -95,11 +102,21 @@ public class Reactor<T> implements Server<T> {
     private void handleAccept(ServerSocketChannel serverChan, Selector selector) throws IOException {
         SocketChannel clientChan = serverChan.accept();
         clientChan.configureBlocking(false);
+        int currId = connectionId++;
+        MessagingProtocol<T> protocol = protocolFactory.get();
         final NonBlockingConnectionHandler<T> handler = new NonBlockingConnectionHandler<>(
                 readerFactory.get(),
-                protocolFactory.get(),
+                protocol,
                 clientChan,
-                this);
+                this,
+                currId,
+                connections);
+        //adding connection id to the protocol
+        connections.connect(currId, handler);
+        //starting the protocal with the connection id and the connections , this is needed becuse of stomp
+                if(protocol instanceof StompMessagingProtocolImpl){
+                    ((StompMessagingProtocolImpl)protocol).start(currId, (Connections<String>) connections);
+                }
         clientChan.register(selector, SelectionKey.OP_READ, handler);
     }
 
@@ -128,6 +145,9 @@ public class Reactor<T> implements Server<T> {
     @Override
     public void close() throws IOException {
         selector.close();
+        if(connections != null){
+            connections.disconnectAll();
+        }
     }
 
 }

@@ -15,11 +15,22 @@ public class BlockingConnectionHandler<T> implements Runnable, ConnectionHandler
     private BufferedInputStream in;
     private BufferedOutputStream out;
     private volatile boolean connected = true;
+    // id and connections for disconectiing
+    private int connectionId =-1;
+    private Connections<T> connections = null;
 
-    public BlockingConnectionHandler(Socket sock, MessageEncoderDecoder<T> reader, MessagingProtocol<T> protocol) {
+
+    public BlockingConnectionHandler(Socket sock, MessageEncoderDecoder<T> reader, MessagingProtocol<T> protocol , int connectionId  , Connections<T> connections) {
         this.sock = sock;
         this.encdec = reader;
         this.protocol = protocol;
+        this.connectionId = connectionId;
+        this.connections = connections;
+    }
+
+    // new leaner constractor so i wont break exsisting code
+    public BlockingConnectionHandler(Socket sock, MessageEncoderDecoder<T> reader, MessagingProtocol<T> protocol){
+        this(sock,reader,protocol,-1,null);
     }
 
     @Override
@@ -51,6 +62,9 @@ public class BlockingConnectionHandler<T> implements Runnable, ConnectionHandler
     public void close() throws IOException {
         connected = false;
         sock.close();
+        if(connections != null && connectionId != -1){
+            connections.disconnect(connectionId);
+        }
     }
 
     @Override
