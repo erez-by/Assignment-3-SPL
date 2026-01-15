@@ -16,6 +16,7 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
     public void process(String message){
         String[] lines = message.split("\n");
         String header = lines[0];
+        int a= 2;
 
         switch(header){
             case "CONNECT":
