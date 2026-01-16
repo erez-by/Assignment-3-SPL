@@ -26,14 +26,16 @@ std::vector<std::strinng> split(const std::string &s, char delimiter){
 	return tokens;
 }
 
-std::string inputParser(std::string input, int& subId , int& receptId 
-	, std::map<std::string,int>& topicMap, std::map<int,PendingRequest>& receptMap){
+std::vector<std::string> inputParser(std::string input, int& subId , int& receptId 
+	, std::map<std::string,int>& topicMap, std::map<int,PendingRequest>& receptMap
+	, std::string myLogInUserName){
 	//function to parse the input from the keyboard and create a stomp frame string
 	//spliting the input by space 
 	std::vector<std::string> args = split(input, ' ');
 	if(args.size()==0){
 		return "";
 	}
+	std::vector<std::string> framesToSend;
 	std::string command = args[0];
 	std::stringstream frame;
 	// all the cases for comands by the user 
@@ -43,7 +45,8 @@ std::string inputParser(std::string input, int& subId , int& receptId
 		frame << "host:stomp.cs.bgu.ac.il\n";
 		frame << "login:" << args[1] << "\n";
 		frame << "passcode:" << args[2] << "\n\n";
-		return frame.str();
+		myLogInUserName = args[1];
+		framesToSend.push_back(frame.str());
 	}
 	if(command == "join"){
 		frame << "SUBSCRIBE\n";
@@ -55,7 +58,7 @@ std::string inputParser(std::string input, int& subId , int& receptId
 		receptMap[receptId] = PendingRequest{"SUBSCRIBE",args[1]};
 		subId++;
 		receptId++;
-		return frame.str();
+		framesToSend.push_back(frame.str());
 	}
 	if(command == "exit"){
 		frame << "UNSUBSCRIBE\n";
@@ -63,7 +66,7 @@ std::string inputParser(std::string input, int& subId , int& receptId
 		frame << "receipt:" << receptId << "\n\n";
 		receptMap[receptId] = PendingRequest{"UNSUBSCRIBE",args[1]};
 		receptId++;
-		return frame.str();
+		framesToSend.push_back(frame.str());
 	}
 	if(command == "report"){
 		std::string json_path = args[1];
@@ -90,19 +93,21 @@ std::string inputParser(std::string input, int& subId , int& receptId
 				frame << key << ":" << value << "\n";
 			}
 			frame << "description:" << event.get_discription() << "\n";
+			framesToSend.push_back(frame.str());
 		}
-		return frame.str();
+		
 	}
 	if(command == "logout"){
 		frame << "DISCONNECT\n";
 		frame << "receipt:" << receptId << "\n\n";
 		receptMap[receptId] = PendingRequest{"DISCONNECT",args[1]};
 		receptId++;
-		return frame.str();
+		framesToSend.push_back(frame.str());
 	}
 	else{
 		return "unknown command";
 		}
+	return framesToSend;
 }
 
 
@@ -173,6 +178,7 @@ int main(int argc, char *argv[]) {
 	int receptId = 1;
 	map<int,PendingRequest> receptMap;
 	std::map<std::string,int> topicMap;
+	std::string myLogInUserName = "";
 	//creating the socket and ketborad threds
 
 	std::thread socketListener(socketListenerThread,connectionHandler,std::ref(stompProtocol));
@@ -185,11 +191,12 @@ int main(int argc, char *argv[]) {
 		if(line==""){
 			continue;
 		}
-		std::string frameString = inputParser(line,subId,receptId,topicMap,receptMap);
-		if(frameString!=""){
-				frameString += '\0';
+		std::vector<std::string> framesToSend = inputParser(line,subId,receptId,topicMap,receptMap,myLogInUserName);
+		for(const std::string& frameString : framesToSend){
+			if(frameString!=""){
+				std::string frameStringWithNull = frameString + '\0';
 			
-			if(!connectionHandler.sendBytes(frameString.c_str(),frameString.length())){
+			if(!connectionHandler.sendBytes(frameStringWithNull.c_str(),frameStringWithNull.length())){
 				std::cout << "Disconnected. Exiting...\n" << std::endl;
 				break;
 			}
@@ -204,6 +211,6 @@ int main(int argc, char *argv[]) {
 
 	return 0;
 
-
+	}
 }
 
