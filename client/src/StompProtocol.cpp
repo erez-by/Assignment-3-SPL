@@ -1,10 +1,12 @@
 #pragma once
 #include "../include/ConnectionHandler.h"
+#include "../include/StompProtocol.h"
+#include "../include/GameManager.h"
 #include <iostream>
 #include <sstream>
 
-//creating the StmopFrame 
-StompFrame::StmopFrame(std::string msg){
+//creating the StompFrame 
+StompFrame::StompFrame(std::string msg){
     std::stringstream ss(msg);
     std::string line;
     //get the command
@@ -28,13 +30,13 @@ StompFrame::StmopFrame(std::string msg){
     //the protocol 
     StompProtocol::StompProtocol():shouldTerminate(false),isConnected(false){}
 
-    void StompProtocol::process(std::string input,std::map<int,PendingRequest>& reciptMap){
+    void StompProtocol::process(std::string input,std::map<int,PendingRequest>& reciptMap,GameManager& gameManager){
         StompFrame frame(input);
         if(frame.command == "CONNECTED"){
             processConnectedFrame(frame );
         }
         else if(frame.command == "MESSAGE"){
-            processMessageFrame(frame );
+            processMessageFrame(frame, gameManager);
         }
         else if(frame.command == "RECEIPT"){
             processReceiptFrame(frame , reciptMap);
@@ -52,7 +54,7 @@ StompFrame::StmopFrame(std::string msg){
         return isConnected;
     }
 
-    void StompProtocol::processConnectedFrame(StmopFrame& frame){
+    void StompProtocol::processConnectedFrame(StompFrame& frame){
         if(isConnected){
             std::cout << "alredy connected to server." << std::endl;
             return;
@@ -61,14 +63,24 @@ StompFrame::StmopFrame(std::string msg){
         std::cout << "log in secsseful." << std::endl;
     }
 
-    void StompProtocol::processMessageFrame(StompFrame& frame){
-        // to do later 
+    void StompProtocol::processMessageFrame(StompFrame& frame , GameManager& gameManager){
+        //exstract data 
+        std::string topic = frame.headers["destination"]; 
+        std::string gameName = topic.substr(7); 
+        std::string user = frame.headers["user"];
+        Event event(frame.body);
+        //updating the game staes accordingly
+        gameManager.updateGameState(gameName, user, event);
+        //printing we gpt a massage - also for cheaking later it works
+        std::cout << "Received update for " << gameName << " from " << user << std::endl;
     }
+
+    
     void StompProtocol::processReceiptFrame(StompFrame& frame,std::map<int,PendingRequest>& reciptMap){
         std::string receiptId = frame.headers["receipt-id"];
         int id = std::stoi(receiptId);
         PendingRequest pendingRequest = reciptMap[id];
-        if(pendingRequest.command == 'DISCONNECT'){
+        if(pendingRequest.command == "DISCONNECT"){
             shouldTerminate = true;
             std::cout << "disconnected from server." << std::endl;
         }

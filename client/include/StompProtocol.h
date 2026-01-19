@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../include/ConnectionHandler.h"
+#include "../include/GameManager.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -18,6 +19,11 @@ struct StompFrame{
     StompFrame(std::string frameString);
 };
 
+struct PendingRequest{
+	std::string command="";
+	std::string content="";
+};
+
 class StompProtocol
 {
 private:
@@ -26,13 +32,13 @@ private:
 public:
 
     StompProtocol();
-    void process(std::string input,std::map<int,PendingRequest>& reciptMap);
+    void process(std::string input,std::map<int,PendingRequest>& reciptMap,GameManager& gameManager);
     bool getShouldTerminate();
     bool getIsConnected();
 
 private:
     void processConnectedFrame(StompFrame& frame);
-    void processMessageFrame(StompFrame& frame);
-    void processReceiptFrame(StompFrame& frame);
+    void processMessageFrame(StompFrame& frame,GameManager& gameManager);
+    void processReceiptFrame(StompFrame& frame,std::map<int,PendingRequest>& reciptMap);
     void processErrorFrame(StompFrame& frame);
 };

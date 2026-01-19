@@ -2,20 +2,18 @@
 #include "../include/ConnectionHandler.h"
 #include "../include/StompProtocol.h"
 #include "../include/event.h"
+#include "../include/GameManager.h"
 #include <iostream>
+#include <fstream>
 #include <thread>
 #include <vector>
 #include <sstream>
 #include <map>
 
 //pending recept map for retiorning massages
-struct PendingRequest{
-	std::string command;
-	std::string content;
-}
 
 
-std::vector<std::strinng> split(const std::string &s, char delimiter){
+std::vector<std::string> split(const std::string &s, char delimiter){
 	//function to split a string by a given delimiter
 	std::vector<std::string> tokens;
 	std::string token;
@@ -28,12 +26,12 @@ std::vector<std::strinng> split(const std::string &s, char delimiter){
 
 std::vector<std::string> inputParser(std::string input, int& subId , int& receptId 
 	, std::map<std::string,int>& topicMap, std::map<int,PendingRequest>& receptMap
-	, std::string myLogInUserName){
+	, std::string myLogInUserName, GameManager& gameManager){
 	//function to parse the input from the keyboard and create a stomp frame string
 	//spliting the input by space 
 	std::vector<std::string> args = split(input, ' ');
 	if(args.size()==0){
-		return "";
+		return std::vector<std::string>{};
 	}
 	std::vector<std::string> framesToSend;
 	std::string command = args[0];
@@ -104,9 +102,38 @@ std::vector<std::string> inputParser(std::string input, int& subId , int& recept
 		receptId++;
 		framesToSend.push_back(frame.str());
 	}
-	else{
-		return "unknown command";
+	if(command =="summary"){
+		std::string gameName = args[1];
+		std::string userName = args[2];
+		std::string filePath = args[3];
+
+		GameState userSates =  gameManager.getUserStates(gameName,userName);
+		std::string team_a_name = userSates.team_a_stats["team a"];
+		std::string team_b_name = userSates.team_b_stats["team b"];
+		std::ofstream outFile(filePath);
+		outFile << team_a_name << "VS" << team_b_name << "\n";
+		outFile << "Game statesL:"<< "\n";
+		for(const auto& [key,value] : userSates.general_states){
+			outFile << key << " : " << value << "\n";
 		}
+		outFile <<team_a_name<< "states:"<< "\n";
+		for(const auto& [key,value] : userSates.team_a_stats){
+			outFile << key << " : " << value << "\n";
+		}
+		outFile <<team_b_name<< "states:"<< "\n";
+		for(const auto& [key,value] : userSates.team_b_stats){
+			outFile << key << " : " << value << "\n";
+		}
+		outFile <<"Game event report:"<< "\n";
+		for(const auto& event : userSates.events){
+			outFile << event.get_time() << " - " << event.get_name() << "\n";
+			outFile << event.get_discription()<< "\n";
+		}
+		outFile.close();
+		std::cout<< "wrote summery to file path: "<< filePath << std::endl;
+		
+
+	}
 	return framesToSend;
 }
 
@@ -137,7 +164,7 @@ std::vector<std::string> inputParser(std::string input, int& subId , int& recept
 //     return 0;
 // }
 
-void socketListenerThread(ConnectionHandler& connectionHandler , StompProtocol& stompProtocol , std::map<int,PendingRequest>& receptMap){
+void socketListenerThread(ConnectionHandler& connectionHandler , StompProtocol& stompProtocol , std::map<int,PendingRequest>& receptMap,GameManager& gameManager){
 	while(1){
 		std::string answer;
 		if(!connectionHandler.getLine(answer)){
@@ -148,7 +175,7 @@ void socketListenerThread(ConnectionHandler& connectionHandler , StompProtocol& 
 		if(answer.length()>0 && answer.at(answer.length()-1)=='\n'){
 			answer=answer.substr(0,answer.length()-1);
 		}
-		stompProtocol.process(answer,receptMap);
+		stompProtocol.process(answer,receptMap,gameManager);
 
 		if(stompProtocol.getShouldTerminate()){
 			break;
@@ -176,12 +203,14 @@ int main(int argc, char *argv[]) {
 	StompProtocol stompProtocol;
 	int subId = 1;
 	int receptId = 1;
-	map<int,PendingRequest> receptMap;
+	std::map<int,PendingRequest> receptMap;
 	std::map<std::string,int> topicMap;
 	std::string myLogInUserName = "";
-	//creating the socket and ketborad threds
+	GameManager gameManager;
 
-	std::thread socketListener(socketListenerThread,connectionHandler,std::ref(stompProtocol));
+	//creating the socket and keyborad threds
+	
+	std::thread socketListener(socketListenerThread,std::ref(connectionHandler) , std::ref(stompProtocol), std::ref(receptMap), std::ref(gameManager));
 
 	while(1){
 		const short bufsize = 1024;
@@ -191,7 +220,7 @@ int main(int argc, char *argv[]) {
 		if(line==""){
 			continue;
 		}
-		std::vector<std::string> framesToSend = inputParser(line,subId,receptId,topicMap,receptMap,myLogInUserName);
+		std::vector<std::string> framesToSend = inputParser(line,subId,receptId,topicMap,receptMap,myLogInUserName,gameManager);
 		for(const std::string& frameString : framesToSend){
 			if(frameString!=""){
 				std::string frameStringWithNull = frameString + '\0';
