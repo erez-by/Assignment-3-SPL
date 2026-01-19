@@ -3,7 +3,8 @@
 Basic Python Server for STOMP Assignment – Stage 3.3
 
 IMPORTANT:
-DO NOT CHANGE the server name or the basic protocol.
+DO NOT CHANGE the server name or the basic protocol.+
+
 Students should EXTEND this server by implementing
 the methods below.
 """
@@ -11,10 +12,12 @@ the methods below.
 import socket
 import sys
 import threading
+import sqlite3
 
 
 SERVER_NAME = "STOMP_PYTHON_SQL_SERVER"  # DO NOT CHANGE!
 DB_FILE = "stomp_server.db"              # DO NOT CHANGE!
+db_lock = threading.Lock()               # For thread-safe DB access
 
 
 def recv_null_terminated(sock: socket.socket) -> str:
@@ -30,15 +33,71 @@ def recv_null_terminated(sock: socket.socket) -> str:
 
 
 def init_database():
-    pass
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        username TEXT PRIMARY KEY,
+        password TEXT NOT NULL,
+        registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP 
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS login_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        logout_time TIMESTAMP,
+        username TEXT NOT NULL,
+        FOREIGN KEY (username) REFERENCES users(username)
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS file_tracking (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        filename TEXT NOT NULL,
+        game_channel TEXT,
+        upload_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        username TEXT NOT NULL,
+        FOREIGN KEY (username) REFERENCES users(username)
+    )
+    """)
+
+    conn.commit()
+    conn.close()
 
 
 def execute_sql_command(sql_command: str) -> str:
-    return "done"
+    with db_lock:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(sql_command)
+            conn.commit()
+        except sqlite3.Error as e:
+            print(f"[{SERVER_NAME}] SQL Error: {e}")
+        finally:
+            conn.close()
+    return "Command executed"
 
 
 def execute_sql_query(sql_query: str) -> str:
-    return "done"
+    result = ""
+    with db_lock:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(sql_query)
+            rows = cursor.fetchall()
+            for row in rows:
+                result += ", ".join(str(item) for item in row) + "\n"
+        except sqlite3.Error as e:
+            print(f"[{SERVER_NAME}] SQL Error: {e}")
+        finally:
+            conn.close()
+    return result.strip()
 
 
 def handle_client(client_socket: socket.socket, addr):

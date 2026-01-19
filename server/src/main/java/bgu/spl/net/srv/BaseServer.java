@@ -1,7 +1,7 @@
 package bgu.spl.net.srv;
 
 import bgu.spl.net.api.MessageEncoderDecoder;
-import bgu.spl.net.api.MessagingProtocol;
+import bgu.spl.net.api.StompMessagingProtocol;
 import bgu.spl.net.impl.stomp.ConnectionsImpl;
 import bgu.spl.net.impl.stomp.StompMessagingProtocolImpl;
 
@@ -13,7 +13,7 @@ import java.util.function.Supplier;
 public abstract class BaseServer<T> implements Server<T> {
 
     private final int port;
-    private final Supplier<MessagingProtocol<T>> protocolFactory;
+    private final Supplier<StompMessagingProtocol<T>> protocolFactory;
     private final Supplier<MessageEncoderDecoder<T>> encdecFactory;
     private ServerSocket sock;
 
@@ -23,7 +23,7 @@ public abstract class BaseServer<T> implements Server<T> {
 
     public BaseServer(
             int port,
-            Supplier<MessagingProtocol<T>> protocolFactory,
+            Supplier<StompMessagingProtocol<T>> protocolFactory,
             Supplier<MessageEncoderDecoder<T>> encdecFactory) {
 
         this.port = port;
@@ -43,7 +43,7 @@ public abstract class BaseServer<T> implements Server<T> {
             while (!Thread.currentThread().isInterrupted()) {
 
                 Socket clientSock = serverSock.accept();
-                MessagingProtocol<T> protocol = protocolFactory.get();
+                StompMessagingProtocol<T> protocol = protocolFactory.get();
                 MessageEncoderDecoder<T> encdec = encdecFactory.get();
                 int currId = connectionId++;
                 BlockingConnectionHandler<T> handler = new BlockingConnectionHandler<>(
@@ -55,10 +55,7 @@ public abstract class BaseServer<T> implements Server<T> {
                 //adding connection id to the protocol
                 connections.connect(currId, handler);
                 //starting the protocal with the connection id and the connections , this is needed becuse of stomp
-                if(protocol instanceof StompMessagingProtocolImpl){
-                    ((StompMessagingProtocolImpl)protocol).start(currId, (Connections<String>) connections);
-                }
-                
+                protocol.start(currId, connections);                
 
 
                 execute(handler);

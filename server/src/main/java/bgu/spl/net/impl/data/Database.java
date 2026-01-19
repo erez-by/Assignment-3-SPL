@@ -18,6 +18,7 @@ public class Database {
 		// SQL server connection details
 		this.sqlHost = "127.0.0.1";
 		this.sqlPort = 7778;
+		executeSQL("UPDATE users SET is_logged_in = 0");
 	}
 
 	public static Database getInstance() {

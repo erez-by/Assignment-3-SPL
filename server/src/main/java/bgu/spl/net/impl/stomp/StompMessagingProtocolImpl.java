@@ -13,6 +13,7 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
     private boolean shouldTerminate = false;
     private boolean loggedIn = false;
     private Connections<String> connections;
+    private 
 
     @Override
     public void start(int connectionId, Connections<String> connections) {
