@@ -9,6 +9,9 @@
 #include <vector>
 #include <sstream>
 #include <map>
+#include <mutex> // Added for thread safety
+
+std::mutex mapMutex;
 
 //pending recept map for retiorning massages
 
@@ -38,6 +41,10 @@ std::vector<std::string> inputParser(std::string input, int& subId , int& recept
 	std::stringstream frame;
 	// all the cases for comands by the user 
 	if(command == "login"){
+		if(args.size() < 3) {
+            std::cout << "Usage: login {host:port} {user} {password}" << std::endl;
+            return framesToSend;
+        }
 		frame << "CONNECT\n";
 		frame << "accept-version:1.2\n";
 		frame << "host:stomp.cs.bgu.ac.il\n";
@@ -71,27 +78,28 @@ std::vector<std::string> inputParser(std::string input, int& subId , int& recept
 		names_and_events data = parseEventsFile(json_path);
 
 		for(Event event : data.events){
-			frame << "SEND\n";
-			frame << "destination:/" << data.team_a_name << "_" << data.team_b_name << "\n\n";
-			frame << "user:" << myLogInUserName << "\n";
-			frame << "team a:" << event.get_team_a_name() << "\n";
-			frame << "team b:" << event.get_team_b_name() << "\n";
-			frame << "event name:" << event.get_name() << "\n";
-			frame << "time:" << event.get_time() << "\n";
-			frame << "general game updates:\n";
+			std::stringstream ss;
+			ss << "SEND\n";
+			ss << "destination:/" << data.team_a_name << "_" << data.team_b_name << "\n\n";
+			ss << "user:" << myLogInUserName << "\n";
+			ss << "team a:" << event.get_team_a_name() << "\n";
+			ss << "team b:" << event.get_team_b_name() << "\n";
+			ss << "event name:" << event.get_name() << "\n";
+			ss << "time:" << event.get_time() << "\n";
+			ss << "general game updates:\n";
 			for(auto const& [key, value]: event.get_game_updates()){
-				frame << key << ":" << value << "\n";
+				ss << key << ":" << value << "\n";
 			}
-			frame << "team a updates:\n";
+			ss << "team a updates:\n";
 			for(auto const& [key, value]: event.get_team_a_updates()){
-				frame << key << ":" << value << "\n";
+				ss << key << ":" << value << "\n";
 			}
-			frame << "team b updates:\n";
+			ss << "team b updates:\n";
 			for(auto const& [key, value]: event.get_team_b_updates()){
-				frame << key << ":" << value << "\n";
+				ss << key << ":" << value << "\n";
 			}
-			frame << "description:" << event.get_discription() << "\n";
-			framesToSend.push_back(frame.str());
+			ss << "description:" << event.get_discription() << "\n";
+			framesToSend.push_back(ss.str());
 		}
 		
 	}
@@ -106,8 +114,8 @@ std::vector<std::string> inputParser(std::string input, int& subId , int& recept
 		std::string gameName = args[1];
 		std::string userName = args[2];
 		std::string filePath = args[3];
-
-		GameState userSates =  gameManager.getUserStates(gameName,userName);
+		try{
+			GameState userSates =  gameManager.getUserStates(gameName,userName);
 		std::string team_a_name = userSates.team_a_stats["team a"];
 		std::string team_b_name = userSates.team_b_stats["team b"];
 		std::ofstream outFile(filePath);
@@ -130,58 +138,40 @@ std::vector<std::string> inputParser(std::string input, int& subId , int& recept
 			outFile << event.get_discription()<< "\n";
 		}
 		outFile.close();
-		std::cout<< "wrote summery to file path: "<< filePath << std::endl;
-		
+		} catch (const std::exception& e) {
+			std::cerr << "Error generating summary: " << e.what() << std::endl;
+		}
 
-	}
+		std::cout<< "wrote summery to file path: "<< filePath << std::endl;
+		}
 	return framesToSend;
 }
 
 
 
-// void keyboardThread(ConnectionHandler connectionHandler){
-// //getting input from the keyboard , using  Stomp protocol to proces it and sending it to the server
-// 	while (1) {
-//         const short bufsize = 1024;
-//         char buf[bufsize];
-//         std::cin.getline(buf, bufsize);
-// 		std::string line(buf);
-// 		int len=line.length();
-//         if (!connectionHandler.sendLine(line)) {
-//             std::cout << "Disconnected. Exiting...\n" << std::endl;
-//             break;
-//         }
-//         std::cout << "Sent " << len+1 << " bytes to server" << std::endl;
 
-//         std::string answer;
-
-//         if (!connectionHandler.getLine(answer)) {
-//             std::cout << "Disconnected. Exiting...\n" << std::endl;
-//             break;
-//         }
-        
-//     }
-//     return 0;
-// }
 
 void socketListenerThread(ConnectionHandler& connectionHandler , StompProtocol& stompProtocol , std::map<int,PendingRequest>& receptMap,GameManager& gameManager){
-	while(1){
-		std::string answer;
-		if(!connectionHandler.getLine(answer)){
-			std::cout << "Disconnected. Exiting...\n" << std::endl;
-			break;
-		}
+    while(1){
+        std::string answer;
+        
+        if(!connectionHandler.getFrameAscii(answer, '\0')){
+            std::cout << "Disconnected. Exiting...\n" << std::endl;
+            break;
+        }
 
-		if(answer.length()>0 && answer.at(answer.length()-1)=='\n'){
-			answer=answer.substr(0,answer.length()-1);
-		}
-		stompProtocol.process(answer,receptMap,gameManager);
+        // Lock map before processing to prevent race conditions
+        {
+            std::lock_guard<std::mutex> lock(mapMutex);
+            stompProtocol.process(answer, receptMap, gameManager);
+        }
 
-		if(stompProtocol.getShouldTerminate()){
-			break;
-		}
-	}
+        if(stompProtocol.getShouldTerminate()){
+            break;
+        }
+    }
 }
+
 
 int main(int argc, char *argv[]) {
 	//cheak for correct number of arguments 
@@ -220,19 +210,20 @@ int main(int argc, char *argv[]) {
 		if(line==""){
 			continue;
 		}
+		std::lock_guard<std::mutex> lock(mapMutex);
 		std::vector<std::string> framesToSend = inputParser(line,subId,receptId,topicMap,receptMap,myLogInUserName,gameManager);
 		for(const std::string& frameString : framesToSend){
 			if(frameString!=""){
 				std::string frameStringWithNull = frameString + '\0';
-			
-			if(!connectionHandler.sendBytes(frameStringWithNull.c_str(),frameStringWithNull.length())){
+				if(!connectionHandler.sendBytes(frameStringWithNull.c_str(),frameStringWithNull.length())){
 				std::cout << "Disconnected. Exiting...\n" << std::endl;
 				break;
 			}
 		}
-	}
+		}
 
-	if(stompProtocol.getShouldTerminate()) break;
+		if(stompProtocol.getShouldTerminate()) break;
+	}
 
 	if(socketListener.joinable()){
 		socketListener.join();
@@ -240,6 +231,6 @@ int main(int argc, char *argv[]) {
 
 	return 0;
 
-	}
 }
+
 

@@ -13,7 +13,7 @@ import socket
 import sys
 import threading
 import sqlite3
-
+from typing import Tuple
 
 SERVER_NAME = "STOMP_PYTHON_SQL_SERVER"  # DO NOT CHANGE!
 DB_FILE = "stomp_server.db"              # DO NOT CHANGE!
@@ -70,37 +70,60 @@ def init_database():
 
 
 def execute_sql_command(sql_command: str) -> str:
-    with db_lock:
+    """Execute INSERT, UPDATE, DELETE commands"""
+    try:
+        print(f"[SQL_COMMAND] Executing: {sql_command[:100]}..." if len(sql_command) > 100 else f"[SQL_COMMAND] Executing: {sql_command}")
         conn = sqlite3.connect(DB_FILE)
+        # enable foreign key constraints
+        conn.execute("PRAGMA foreign_keys = ON")  
         cursor = conn.cursor()
-        try:
-            cursor.execute(sql_command)
-            conn.commit()
-        except sqlite3.Error as e:
-            print(f"[{SERVER_NAME}] SQL Error: {e}")
-        finally:
-            conn.close()
-    return "Command executed"
+        cursor.execute(sql_command)
+        conn.commit()
+        rows_affected = cursor.rowcount
+        conn.close()
+        result = f"SUCCESS: {rows_affected} rows affected"
+        print(f"[SQL_COMMAND] Result: {result}")
+        return result
+    except Exception as e:
+        error_msg = f"ERROR: {str(e)}"
+        print(f"[SQL_COMMAND] {error_msg}")
+        return error_msg
+
 
 
 def execute_sql_query(sql_query: str) -> str:
-    result = ""
-    with db_lock:
+    """Execute SELECT queries and return results"""
+    try:
+        print(f"[SQL_QUERY] Executing: {sql_query[:100]}..." if len(sql_query) > 100 else f"[SQL_QUERY] Executing: {sql_query}")
         conn = sqlite3.connect(DB_FILE)
+        conn.execute("PRAGMA foreign_keys = ON")  # Enable foreign key constraints
         cursor = conn.cursor()
-        try:
-            cursor.execute(sql_query)
-            rows = cursor.fetchall()
-            for row in rows:
-                result += ", ".join(str(item) for item in row) + "\n"
-        except sqlite3.Error as e:
-            print(f"[{SERVER_NAME}] SQL Error: {e}")
-        finally:
-            conn.close()
-    return result.strip()
+        cursor.execute(sql_query)
+        results = cursor.fetchall()
+        conn.close()
+        
+        # Format results as: SUCCESS|field1,field2,field3|field1,field2,field3...
+        # Each row's fields are comma-separated, rows are pipe-separated
+        if results:
+            formatted_rows: list[str] = []
+            for row in results:
+                # Convert each field to string, replace None with empty string
+                fields = [str(field) if field is not None else "" for field in row]
+                # Join fields with comma
+                formatted_rows.append(",".join(fields))
+            result_str = "SUCCESS|" + "|".join(formatted_rows)
+            print(f"[SQL_QUERY] Result: {len(results)} row(s) returned")
+            return result_str
+        else:
+            print(f"[SQL_QUERY] Result: No rows returned")
+            return "SUCCESS|"
+    except Exception as e:
+        error_msg = f"ERROR: {str(e)}"
+        print(f"[SQL_QUERY] {error_msg}")
+        return error_msg
 
-
-def handle_client(client_socket: socket.socket, addr):
+# handle client connections
+def handle_client(client_socket: socket.socket, addr: Tuple[str, int]):
     print(f"[{SERVER_NAME}] Client connected from {addr}")
 
     try:
@@ -109,10 +132,18 @@ def handle_client(client_socket: socket.socket, addr):
             if message == "":
                 break
 
-            print(f"[{SERVER_NAME}] Received:")
-            print(message)
+            print(f"[{SERVER_NAME}] Received from {addr}:")
+            print(f"  {message[:100]}..." if len(message) > 100 else f"  {message}")
 
-            client_socket.sendall(b"done\0")
+            # cheak  to determine if it's a query or command
+            sql_upper = message.strip().upper()
+            if sql_upper.startswith('SELECT'):
+                response = execute_sql_query(message)
+            else:
+                response = execute_sql_command(message)
+            
+            print(f"[{SERVER_NAME}] Sending response to {addr}: {response[:100]}..." if len(response) > 100 else f"[{SERVER_NAME}] Sending response to {addr}: {response}")
+            client_socket.sendall((response + "\0").encode('utf-8'))
 
     except Exception as e:
         print(f"[{SERVER_NAME}] Error handling client {addr}: {e}")
@@ -124,6 +155,8 @@ def handle_client(client_socket: socket.socket, addr):
         print(f"[{SERVER_NAME}] Client {addr} disconnected")
 
 
+
+    
 def start_server(host="127.0.0.1", port=7778):
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -153,6 +186,9 @@ def start_server(host="127.0.0.1", port=7778):
 
 
 if __name__ == "__main__":
+    print(f"[{SERVER_NAME}] Initializing database...")
+    init_database()
+    print(f"[{SERVER_NAME}] Database initialized")
     port = 7778
     if len(sys.argv) > 1:
         raw_port = sys.argv[1].strip()

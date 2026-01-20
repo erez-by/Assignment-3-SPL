@@ -10,13 +10,18 @@ StompFrame::StompFrame(std::string msg){
     std::stringstream ss(msg);
     std::string line;
     //get the command
-    std::getline(ss,command);
+    if (std::getline(ss, command)) {
+        if (!command.empty() && command.back() == '\r') command.pop_back();
+    }
     //get the header lines
-    while(std::getline(ss,line) && !line.empty()){
+    while(std::getline(ss, line) && !line.empty()){
+        if (line.back() == '\r') line.pop_back(); // Fix CRLF issue
+        if (line.empty()) break; 
+
         size_t pos = line.find(':');
         if(pos != std::string::npos){
-            std::string key = line.substr(0,pos);
-            std::string value = line.substr(pos+1);
+            std::string key = line.substr(0, pos);
+            std::string value = line.substr(pos + 1);
             headers[key] = value;
         }
     }
@@ -31,6 +36,7 @@ StompFrame::StompFrame(std::string msg){
     StompProtocol::StompProtocol():shouldTerminate(false),isConnected(false){}
 
     void StompProtocol::process(std::string input,std::map<int,PendingRequest>& reciptMap,GameManager& gameManager){
+        //
         StompFrame frame(input);
         if(frame.command == "CONNECTED"){
             processConnectedFrame(frame );
