@@ -26,7 +26,7 @@ public class StompServer {
         String serverType = args[1];
         Server<String> server;
 
-        if(serverType.equals("tcp")){
+        if(serverType.equals("tpc")){
         server = new TCPServer<>(port, 
             () -> new StompMessagingProtocolImpl(), 
             () -> new StompMessageEncoderDecoder());
