@@ -129,6 +129,7 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
             this.loggedIn = true;
             this.username = login;
             connections.send(connectionId, "CONNECTED\nsession-id:" + connectionId + "\n\n");
+            return;
         }
     }
 
@@ -178,8 +179,8 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
             connections.send(connectionId, "RECEIPT\nreceipt-id:" + receiptId + "\n\n");
         }
         // Tracking file upload in the database if applicable
-        if (username != null && destination != null && receiptId != null) {
-            database.trackFileUpload(username, destination, receiptId);
+        if (username != null && destination != null) {
+            database.trackFileUpload(username, body, destination);
         }
 
 
