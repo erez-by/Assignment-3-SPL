@@ -13,12 +13,14 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
     private boolean shouldTerminate = false;
     private boolean loggedIn = false;
     private Connections<String> connections;
-    private 
+    private Database database;
+    String username;
 
     @Override
     public void start(int connectionId, Connections<String> connections) {
         this.connectionId = connectionId;
         this.connections = connections;
+        this.database = Database.getInstance();
     }
 
     @Override
@@ -102,6 +104,7 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
         String acceptVersion = headers.get("accept-version");
         String login = headers.get("login");
         String passcode = headers.get("passcode");
+        username = login;
 
         // First we check if the headers are valid
         if (login == null || passcode == null) {
@@ -112,17 +115,40 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
             sendError("Unsupported Version", "The server only supports STOMP version 1.2.", headers);
             return;
         }
-
+        // Checking login status from the database and acting accordingly
         LoginStatus status = Database.getInstance().login(connectionId, login, passcode);
-
-        if (status == LoginStatus.LOGGED_IN_SUCCESSFULLY || status == LoginStatus.ADDED_NEW_USER) {
+        if (status == LoginStatus.CLIENT_ALREADY_CONNECTED) {
+            sendError("Already Connected", "This client is already connected.", headers);
+            return;
+        }   
+        if (status == LoginStatus.LOGGED_IN_SUCCESSFULLY) {
             loggedIn = true;
             connections.send(connectionId, "CONNECTED\nsession-id:" + connectionId + "\n\n");
-        } else {
-            sendError("Login Failed", "Invalid login or passcode.", headers);
+            
+            
         }
+        if (status == LoginStatus.ADDED_NEW_USER)
 
-        // Unfinished part - need to handle other login status cases!!!!
+        
+
+    }
+
+    private void Disconnect(Map<String, String> headers) {
+        // Checking if the client is logged in
+        if (loggedIn == false) {
+            sendError("Not Logged In", "You must be logged in to disconnect.", headers);
+            return;
+        }
+        // Sending receipt if present
+        String receiptId = headers.get("receipt");
+        if (receiptId != null) {
+            connections.send(connectionId, "RECEIPT\nreceipt-id:" + receiptId + "\n\n");
+        }
+        // Disconnecting the client
+
+
+        connections.disconnect(connectionId);
+        this.shouldTerminate = true;
 
     }
 
@@ -152,6 +178,13 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
         if (receiptId != null) {
             connections.send(connectionId, "RECEIPT\nreceipt-id:" + receiptId + "\n\n");
         }
+        String username = headers.get("username");
+        destination = headers.get("destination");
+
+        if (username != null && destination != null && receiptId != null) {
+            database.trackFileUpload(username, destination, receiptId);
+        }
+        
 
     }
 
@@ -213,25 +246,6 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
         if (receiptId != null) {
             connections.send(connectionId, "RECEIPT\nreceipt-id:" + receiptId + "\n\n");
         }
-    }
-
-    private void Disconnect(Map<String, String> headers) {
-        // Checking if the client is logged in
-        if (loggedIn == false) {
-            sendError("Not Logged In", "You must be logged in to disconnect.", headers);
-            return;
-        }
-        // Sending receipt if present
-        String receiptId = headers.get("receipt");
-        if (receiptId != null) {
-            connections.send(connectionId, "RECEIPT\nreceipt-id:" + receiptId + "\n\n");
-        }
-        // Disconnecting the client
-
-
-        connections.disconnect(connectionId);
-        this.shouldTerminate = true;
-
     }
 
     // Sends an error message to the client
