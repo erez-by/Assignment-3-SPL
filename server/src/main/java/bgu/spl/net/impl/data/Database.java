@@ -18,7 +18,12 @@ public class Database {
 		// SQL server connection details
 		this.sqlHost = "127.0.0.1";
 		this.sqlPort = 7778;
-		executeSQL("UPDATE users SET is_logged_in = 0");
+		//ensuring that any users that were logged in are logged out on server startup
+		try {
+			executeSQL("UPDATE login_history SET logout_time = datetime('now') WHERE logout_time IS NULL");
+		} catch (Exception e) {
+			System.err.println("Error: SQL Server is not running!");
+		}
 	}
 
 	public static Database getInstance() {
@@ -68,27 +73,43 @@ public class Database {
 	}
 
 	public LoginStatus login(int connectionId, String username, String password) {
+
 		if (connectionsIdMap.containsKey(connectionId)) {
 			return LoginStatus.CLIENT_ALREADY_CONNECTED;
 		}
-		if (addNewUserCase(connectionId, username, password)) {
-			// Log new user registration in SQL
-			String sql = String.format(
+
+		// Fetch stored password from SQL database
+		String query = "SELECT password FROM users WHERE username = '" + username + "'";
+    	String result = executeSQL(query);
+		// Handling SQL errors
+		if (result.startsWith("ERROR")) {
+			return LoginStatus.WRONG_PASSWORD; 
+		}
+		String dbPassword = result.trim();
+		//Adding new user if not exists, else logging in existing user
+		if (dbPassword.isEmpty()) {
+			if (addNewUserCase(connectionId, username, password)) {
+				String sql = String.format(
 				"INSERT INTO users (username, password, registration_date) VALUES ('%s', '%s', datetime('now'))",
 				escapeSql(username), escapeSql(password)
 			);
 			executeSQL(sql);
-			
 			// Log login
 			logLogin(username);
 			return LoginStatus.ADDED_NEW_USER;
+			} else {
+				LoginStatus status = userExistsCase(connectionId, username, password);
+            if (status == LoginStatus.LOGGED_IN_SUCCESSFULLY) {
+                logLogin(username);
+            }
+            return status;
+			}		
 		} else {
 			LoginStatus status = userExistsCase(connectionId, username, password);
-			if (status == LoginStatus.LOGGED_IN_SUCCESSFULLY) {
-				// Log successful login in SQL
-				logLogin(username);
-			}
-			return status;
+            if (status == LoginStatus.LOGGED_IN_SUCCESSFULLY) {
+                logLogin(username);
+            }
+            return status;
 		}
 	}
 
@@ -147,12 +168,6 @@ public class Database {
 		}
 	}
 
-	/**
-	 * Track file upload in SQL database
-	 * @param username User who uploaded the file
-	 * @param filename Name of the file
-	 * @param gameChannel Game channel the file was reported to
-	 */
 	public void trackFileUpload(String username, String filename, String gameChannel) {
 		String sql = String.format(
 			"INSERT INTO file_tracking (username, filename, upload_time, game_channel) " +
@@ -251,4 +266,5 @@ private String repeat(String str, int times) {
 
 private static class Instance {
 	static Database instance = new Database();
-}}
+}
+}
