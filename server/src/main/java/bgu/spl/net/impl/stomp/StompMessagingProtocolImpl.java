@@ -117,20 +117,19 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
         }
         // Checking login status from the database and acting accordingly
         LoginStatus status = Database.getInstance().login(connectionId, login, passcode);
-        if (status == LoginStatus.CLIENT_ALREADY_CONNECTED) {
-            sendError("Already Connected", "This client is already connected.", headers);
+        if (status == LoginStatus.CLIENT_ALREADY_CONNECTED || status == LoginStatus.ALREADY_LOGGED_IN) {
+            sendError("Already Connected", "User already logged in.", headers);
             return;
-        }   
-        if (status == LoginStatus.LOGGED_IN_SUCCESSFULLY) {
-            loggedIn = true;
-            connections.send(connectionId, "CONNECTED\nsession-id:" + connectionId + "\n\n");
-            
-            
+        } 
+        if (status == LoginStatus.WRONG_PASSWORD) {
+             sendError("Wrong Password", "Password does not match.", headers);
+             return;
         }
-        if (status == LoginStatus.ADDED_NEW_USER)
-
-        
-
+        if (status == LoginStatus.LOGGED_IN_SUCCESSFULLY || status == LoginStatus.ADDED_NEW_USER) {
+            this.loggedIn = true;
+            this.username = login;
+            connections.send(connectionId, "CONNECTED\nsession-id:" + connectionId + "\n\n");
+        }
     }
 
     private void Disconnect(Map<String, String> headers) {
@@ -144,8 +143,8 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
         if (receiptId != null) {
             connections.send(connectionId, "RECEIPT\nreceipt-id:" + receiptId + "\n\n");
         }
-        // Disconnecting the client
-
+        // Logging out from the database
+        Database.getInstance().logout(connectionId);
 
         connections.disconnect(connectionId);
         this.shouldTerminate = true;
@@ -178,13 +177,11 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
         if (receiptId != null) {
             connections.send(connectionId, "RECEIPT\nreceipt-id:" + receiptId + "\n\n");
         }
-        String username = headers.get("username");
-        destination = headers.get("destination");
-
+        // Tracking file upload in the database if applicable
         if (username != null && destination != null && receiptId != null) {
             database.trackFileUpload(username, destination, receiptId);
         }
-        
+
 
     }
 
@@ -214,7 +211,7 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
       String receiptId = headers.get("receipt");
       if (receiptId != null) {  
         connections.send(connectionId, "RECEIPT\nreceipt-id:" + receiptId + "\n\n");
-      
+      }
     }
 
     private void Unsubscribe(Map<String, String> headers) {
