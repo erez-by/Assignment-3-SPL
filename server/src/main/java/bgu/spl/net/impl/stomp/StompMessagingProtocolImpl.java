@@ -2,9 +2,9 @@ package bgu.spl.net.impl.stomp;
 
 import bgu.spl.net.api.StompMessagingProtocol;
 import bgu.spl.net.srv.Connections;
+import bgu.spl.net.impl.stomp.ConnectionsImpl;
 import java.util.Map;
 import java.util.HashMap;
-
 import bgu.spl.net.impl.data.LoginStatus;
 import bgu.spl.net.impl.data.Database;
 
@@ -27,10 +27,13 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
     public void process(String message) {
 
         // Spliting the message to commands strings array
-        String[] lines = message.split("\n");
+        String[] parts = message.split("\n\n", 2);
+        String headerPart = parts[0];
+        String body = parts.length > 1 ? parts[1] : "";
+        // further spliting the header part to lines
+        String[] lines = headerPart.split("\n");
         if (lines.length == 0) {
-            sendError("Empty Message", "The received message is empty.", new HashMap<>()); // Just an empty map for
-                                                                                           // degenerate cases
+            sendError("Empty Message", "The received message is empty.", new HashMap<>()); 
             return;
         }
         // Saving the first string command and using trim to delete unnecessary spaces
@@ -39,7 +42,7 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
         // Parsing headers into a map
         Map<String, String> headers = new HashMap<>();
         for (int i = 1; i < lines.length; i++) {
-            String line = lines[i].trim();
+            String line = lines[i];
             if (line.isEmpty()) {
                 break; // End of headers and start of body
             }
@@ -47,28 +50,6 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
             if (headerParts.length == 2) {
                 headers.put(headerParts[0].trim(), headerParts[1].trim());
             }
-        }
-
-        // Extracting body
-        int bodyStartIndex = -1;
-        for (int i = 1; i < lines.length; i++) {
-            if (lines[i].trim().isEmpty()) {
-                bodyStartIndex = i + 1;
-                break;
-            }
-        }
-        String body = "";
-        if (bodyStartIndex != -1 && bodyStartIndex < lines.length) {
-            StringBuilder bodyBuilder = new StringBuilder();
-            for (int i = bodyStartIndex; i < lines.length; i++) {
-                // removing null characters from the body lines
-                String line = lines[i].replace("\u0000", "");
-                bodyBuilder.append(line);
-                if (i < lines.length - 1) {
-                    bodyBuilder.append("\n"); // Preserving line breaks in the body
-                }
-            }
-            body = bodyBuilder.toString().trim();
         }
 
         // Handling commands
@@ -128,7 +109,7 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
         if (status == LoginStatus.LOGGED_IN_SUCCESSFULLY || status == LoginStatus.ADDED_NEW_USER) {
             this.loggedIn = true;
             this.username = login;
-            connections.send(connectionId, "CONNECTED\nsession-id:" + connectionId + "\n\n");
+            connections.send(connectionId, "CONNECTED\nversion:1.2\nsession-id:" + connectionId + "\n\n");
             return;
         }
     }
@@ -166,7 +147,7 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
         }
         // Checking if the client is subscribed to the destination 
         ConnectionsImpl<String> impl = (ConnectionsImpl<String>) connections;
-        if (!impl.TopicToClient.containsKey(destination)) {
+        if (!impl.TopicToClient.containsKey(destination) || !impl.TopicToClient.get(destination).containsKey(connectionId)) {
             sendError("Not subscribed", "You are not subscribed to the destination: " + destination, headers);
             return;
         }
@@ -234,6 +215,9 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
             String channel = impl.getTopicBySubscriptionId(connectionId, subId);
             if (channel != null) {
                 connections.unsubscribe(connectionId, channel);
+            } else {
+                sendError("Not Subscribed", "You are not subscribed with subscription id: " + subId, headers);
+                return;
             }
         } catch (NumberFormatException e) {
             sendError("Invalid Subscription ID", "The subscription id must be an integer.", headers);

@@ -39,7 +39,7 @@ public class ConnectionsImpl<T> implements Connections<T> {
                 Integer subId = subscribers.get(Id);
                 // creating the message string
                 String msgString = "MESSAGE\nsubscription:" + subId + "\nmessage-id:" + msgId + "\ndestination:"
-                        + channel + "\n\n" + msg + "\u0000";
+                        + channel + "\n\n" + msg;
                 send(Id, (T) msgString);
             }
         }

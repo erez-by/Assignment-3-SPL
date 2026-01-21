@@ -4,7 +4,7 @@ import bgu.spl.net.api.StompMessagingProtocol;
 import bgu.spl.net.impl.stomp.StompMessagingProtocolImpl;
 import bgu.spl.net.impl.stomp.StompMessageEncoderDecoder;
 import bgu.spl.net.srv.Server;
-import bgu.spl.net.impl.stomp.TCPServer;
+import bgu.spl.net.impl.stomp.TPCServer;
 
 public class StompServer {
 
@@ -27,8 +27,9 @@ public class StompServer {
         Server<String> server;
 
         if(serverType.equals("tpc")){
-        server = new TCPServer<>(port, 
-            () -> new StompMessagingProtocolImpl(), 
+            server = Server.threadPerClient(
+            port,
+            () -> new StompMessagingProtocolImpl(),
             () -> new StompMessageEncoderDecoder());
         server.serve();
         }
