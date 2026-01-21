@@ -2,8 +2,6 @@ package bgu.spl.net.srv;
 
 import bgu.spl.net.api.MessageEncoderDecoder;
 import bgu.spl.net.api.StompMessagingProtocol;
-import bgu.spl.net.impl.stomp.ConnectionsImpl;
-import bgu.spl.net.impl.stomp.StompMessagingProtocolImpl;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -13,50 +11,47 @@ import java.util.function.Supplier;
 public abstract class BaseServer<T> implements Server<T> {
 
     private final int port;
-    private final Supplier<StompMessagingProtocol<T>> protocolFactory;
+    private final Supplier<StompMessagingProtocol<T>> stompProtocolFactory;
     private final Supplier<MessageEncoderDecoder<T>> encdecFactory;
     private ServerSocket sock;
+    private ConnectionsImpl<T> connections;
+    private int connectionIdCounter;
 
-    //adding filed to asign connection id and connections
-    private int connectionId = 0;
-    protected final ConnectionsImpl<T> connections = new ConnectionsImpl<>();
-
-    public BaseServer(
+      public BaseServer(
             int port,
-            Supplier<StompMessagingProtocol<T>> protocolFactory,
+            Supplier<StompMessagingProtocol<T>> stompProtocolFactory,
             Supplier<MessageEncoderDecoder<T>> encdecFactory) {
 
         this.port = port;
-        this.protocolFactory = protocolFactory;
+        this.stompProtocolFactory = stompProtocolFactory;
         this.encdecFactory = encdecFactory;
-		this.sock = null;
+        this.sock = null;
+        this.connections = new ConnectionsImpl<>();
+        this.connectionIdCounter = 0;
     }
 
     @Override
     public void serve() {
-
         try (ServerSocket serverSock = new ServerSocket(port)) {
-			System.out.println("Server started");
+            System.out.println("Server started");
 
-            this.sock = serverSock; //just to be able to close
+            this.sock = serverSock; // just to be able to close
 
             while (!Thread.currentThread().isInterrupted()) {
 
                 Socket clientSock = serverSock.accept();
-                StompMessagingProtocol<T> protocol = protocolFactory.get();
-                MessageEncoderDecoder<T> encdec = encdecFactory.get();
-                int currId = connectionId++;
+                int connectionId = connectionIdCounter++;
+
+                StompMessagingProtocol<T> protocol = stompProtocolFactory.get();
+                protocol.start(connectionId, connections);
+
                 BlockingConnectionHandler<T> handler = new BlockingConnectionHandler<>(
                         clientSock,
-                        encdec,
-                        protocol,
-                        currId,
-                        connections);
-                //adding connection id to the protocol
-                connections.connect(currId, handler);
-                //starting the protocal with the connection id and the connections , this is needed becuse of stomp
-                protocol.start(currId, connections);                
+                        encdecFactory.get(),
+                        protocol);
 
+                // Register handler in connections        
+                connections.addConnection(connectionId, handler);
 
                 execute(handler);
             }
@@ -68,11 +63,9 @@ public abstract class BaseServer<T> implements Server<T> {
 
     @Override
     public void close() throws IOException {
-		if (sock != null)
-			sock.close();
-            connections.disconnectAll();
+        if (sock != null)
+            sock.close();
     }
 
-    protected abstract void execute(BlockingConnectionHandler<T>  handler);
-
+    protected abstract void execute(BlockingConnectionHandler<T> handler);
 }

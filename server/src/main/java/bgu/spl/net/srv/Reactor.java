@@ -1,12 +1,7 @@
 package bgu.spl.net.srv;
 
 import bgu.spl.net.api.MessageEncoderDecoder;
-import bgu.spl.net.api.MessagingProtocol;
-import bgu.spl.net.impl.stomp.ConnectionsImpl;
-import bgu.spl.net.impl.stomp.StompMessageEncoderDecoder;
-import bgu.spl.net.impl.stomp.StompMessagingProtocolImpl;
 import bgu.spl.net.api.StompMessagingProtocol;
-
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.ClosedSelectorException;
@@ -24,13 +19,11 @@ public class Reactor<T> implements Server<T> {
     private final Supplier<MessageEncoderDecoder<T>> readerFactory;
     private final ActorThreadPool pool;
     private Selector selector;
+    private ConnectionsImpl<T> connections;
+    private int connectionIdCounter;
 
     private Thread selectorThread;
     private final ConcurrentLinkedQueue<Runnable> selectorTasks = new ConcurrentLinkedQueue<>();
-
-    //adding filed to asign connection id and connections
-    private int connectionId = 0;
-    protected final ConnectionsImpl<T> connections = new ConnectionsImpl<>();
 
     public Reactor(
             int numThreads,
@@ -42,6 +35,8 @@ public class Reactor<T> implements Server<T> {
         this.port = port;
         this.protocolFactory = protocolFactory;
         this.readerFactory = readerFactory;
+        this.connections = new ConnectionsImpl<>();
+        this.connectionIdCounter = 0;
     }
 
     @Override
@@ -105,21 +100,19 @@ public class Reactor<T> implements Server<T> {
         SocketChannel clientChan = serverChan.accept();
         clientChan.configureBlocking(false);
 
-        // preapare data
-        int currId = connectionId++;
+        int connectionId = connectionIdCounter++;
+
         StompMessagingProtocol<T> protocol = protocolFactory.get();
-        protocol.start(currId, connections);
+        protocol.start(connectionId, connections);
+
         final NonBlockingConnectionHandler<T> handler = new NonBlockingConnectionHandler<>(
                 readerFactory.get(),
                 protocol,
                 clientChan,
-                this,
-                currId,
-                connections);
+                this);
 
-        
-        connections.connect(currId, handler);
-        //starting the protocal with the connection id and the connections , this is needed becuse of stomp
+        connections.addConnection(connectionId, handler);
+
         clientChan.register(selector, SelectionKey.OP_READ, handler);
     }
 
@@ -148,9 +141,5 @@ public class Reactor<T> implements Server<T> {
     @Override
     public void close() throws IOException {
         selector.close();
-        if(connections != null){
-            connections.disconnectAll();
-        }
     }
-
 }
