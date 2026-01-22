@@ -31,9 +31,8 @@ public class StompServer {
             port,
             () -> new StompMessagingProtocolImpl(),
             () -> new StompMessageEncoderDecoder());
-        server.serve();
+            server.serve();
         }
-
         else if (serverType.equals("reactor")){
             server = new Reactor<>(
                 4,

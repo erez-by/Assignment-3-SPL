@@ -23,7 +23,7 @@ class GameManager{
         std::map<std::string,std::map<std::string,GameState>> gameUpdates;
         std::mutex _mutex;
     public:
-        GameManager() = default;
+        GameManager(): gameUpdates(), _mutex() {}
         
         //updating the staes after one event
         void updateGameState(std::string game_name,std::string user_name,Event event){

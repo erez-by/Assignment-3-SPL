@@ -6,9 +6,9 @@ import bgu.spl.net.api.StompMessagingProtocol;
 import bgu.spl.net.srv.BaseServer;
 import bgu.spl.net.srv.BlockingConnectionHandler;
 
-public class TCPServer<T> extends BaseServer<T> {
+public class TPCServer<T> extends BaseServer<T> {
 
-    public TCPServer(
+    public TPCServer(
             int port,
             Supplier<StompMessagingProtocol<T>> protocolFactory,
             Supplier<MessageEncoderDecoder<T>> readerFactory) {

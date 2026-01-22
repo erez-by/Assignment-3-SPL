@@ -159,9 +159,11 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
         if (receiptId != null) {
             connections.send(connectionId, "RECEIPT\nreceipt-id:" + receiptId + "\n\n");
         }
+
+        String filename = headers.get("file name");
         // Tracking file upload in the database if applicable
-        if (username != null && destination != null) {
-            database.trackFileUpload(username, body, destination);
+        if (filename != null) {
+            database.trackFileUpload(username, filename, destination);
         }
 
 
@@ -242,8 +244,9 @@ public class StompMessagingProtocolImpl implements StompMessagingProtocol<String
         }
         // Adding message and details
         sb.append("message:").append(message).append("\n");
+        sb.append("\n");
         sb.append(details).append("\n");
-        sb.append('\0');
+
         // Sending the error message
         if (connections != null)
             connections.send(connectionId, sb.toString());

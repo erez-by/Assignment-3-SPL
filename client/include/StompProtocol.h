@@ -34,6 +34,7 @@ public:
     StompProtocol();
     void process(std::string input,std::map<int,PendingRequest>& reciptMap,GameManager& gameManager);
     bool getShouldTerminate();
+    void setShouldTerminate(bool terminate);
     bool getIsConnected();
 
 private:

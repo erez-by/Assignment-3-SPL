@@ -1,4 +1,3 @@
-#pragma once
 #include "../include/ConnectionHandler.h"
 #include "../include/StompProtocol.h"
 #include "../include/GameManager.h"
@@ -6,7 +5,7 @@
 #include <sstream>
 
 //creating the StompFrame 
-StompFrame::StompFrame(std::string msg){
+StompFrame::StompFrame(std::string msg): command(""), headers(), body(""){
     std::stringstream ss(msg);
     std::string line;
     //get the command
@@ -39,6 +38,7 @@ StompFrame::StompFrame(std::string msg){
         //
         StompFrame frame(input);
         if(frame.command == "CONNECTED"){
+
             processConnectedFrame(frame );
         }
         else if(frame.command == "MESSAGE"){
@@ -56,6 +56,10 @@ StompFrame::StompFrame(std::string msg){
         return shouldTerminate;
     }
 
+    void StompProtocol::setShouldTerminate(bool terminate){
+        shouldTerminate = terminate;
+    }
+
     bool StompProtocol::getIsConnected(){
         return isConnected;
     }
@@ -66,7 +70,7 @@ StompFrame::StompFrame(std::string msg){
             return;
         }
         isConnected = true;
-        std::cout << "log in secsseful." << std::endl;
+        std::cout << "login successful." << std::endl;
     }
 
     void StompProtocol::processMessageFrame(StompFrame& frame , GameManager& gameManager){
