@@ -1,66 +1,49 @@
 package bgu.spl.net.impl.stomp;
-
 import bgu.spl.net.srv.Reactor;
+import bgu.spl.net.api.StompMessagingProtocol;
+import bgu.spl.net.impl.stomp.StompMessagingProtocolImpl;
+import bgu.spl.net.impl.stomp.StompMessageEncoderDecoder;
 import bgu.spl.net.srv.Server;
-
+import bgu.spl.net.impl.stomp.TPCServer;
 
 public class StompServer {
 
     public static void main(String[] args) {
-        if (!validArgs(args)) {
-            printUsage();
+        // args like {port} ,{server type}
+        if (args.length < 2) {
+            System.out.println("Usage: StompServer <port> <tpc|reactor>");
             return;
         }
-
-        int port = parsePort(args[0]);
-        if (port == -1) {
+        
+        int port;
+        try {
+            port = Integer.parseInt(args[0]);
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid port number: " + args[0]);
             return;
         }
+        
+        String serverType = args[1];
+        Server<String> server;
 
-        Server<String> server = buildServer(args[1], port);
-
-        if (server != null) {
+        if(serverType.equals("tpc")){
+            server = Server.threadPerClient(
+            port,
+            () -> new StompMessagingProtocolImpl(),
+            () -> new StompMessageEncoderDecoder());
             server.serve();
         }
-    }
-
-    private static boolean validArgs(String[] args) {
-        return args != null && args.length >= 2;
-    }
-
-    private static int parsePort(String portArg) {
-        try {
-            return Integer.parseInt(portArg);
-        } catch (NumberFormatException e) {
-            System.out.println("Invalid port number: " + portArg);
-            return -1;
+        else if (serverType.equals("reactor")){
+            server = new Reactor<>(
+                4,
+                port,
+                () -> new StompMessagingProtocolImpl(),
+                () -> new StompMessageEncoderDecoder());
+            server.serve();
         }
-    }
-
-    private static Server<String> buildServer(String type, int port) {
-        switch (type) {
-            case "tpc":
-                return new TPCServer<>(
-                        port,
-                        StompMessagingProtocolImpl::new,
-                        StompMessageEncoderDecoder::new
-                );
-
-            case "reactor":
-                return new Reactor<>(
-                        2,
-                        port,
-                        StompMessagingProtocolImpl::new,
-                        StompMessageEncoderDecoder::new
-                );
-
-            default:
-                System.out.println("Unknown server type: " + type);
-                return null;
+        else{
+            System.out.println("Invalid server type: " + serverType);
+            return;
         }
-    }
-
-    private static void printUsage() {
-        System.out.println("Usage: StompServer <port> <tpc|reactor>");
     }
 }
